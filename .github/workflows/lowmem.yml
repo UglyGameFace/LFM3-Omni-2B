@@ -1,0 +1,54 @@
+name: Omni official Q4_0 low-memory comparison
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/download_models.py'
+      - 'scripts/stress_matrix.py'
+      - '.github/workflows/lowmem.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: omni-lowmem-q4-0
+  cancel-in-progress: false
+
+jobs:
+  compare-q4-0:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Source validation
+        run: |
+          python -m compileall -q scripts tests
+          python -m unittest discover -s tests -v
+          bash -n scripts/build_llama.sh
+      - name: Build pinned CPU llama.cpp separately from RivaL
+        run: bash scripts/build_llama.sh
+      - name: Download checksum-verified official Q4_0 model and Q4_0 projector
+        run: python scripts/download_models.py --variant q4_0 --output-dir .models
+      - name: Compare lower-memory text, image, context and reliability
+        run: |
+          python scripts/stress_matrix.py \
+            --server build/llama.cpp/build/bin/llama-server \
+            --model-dir .models \
+            --variant q4_0 \
+            --output reports/omni-q4-0-matrix.json \
+            --rounds 3
+      - name: Upload isolated Q4_0 benchmark result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omni-official-q4-0-matrix
+          path: |
+            reports/omni-q4-0-matrix.json
+            reports/*.server.log
+          if-no-files-found: warn
+          retention-days: 14

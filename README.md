@@ -74,3 +74,26 @@ run independently. For local isolated testing:
 The matrix reports an experimental research candidate, not a production
 recommendation. Do not deploy unless full application memory, stability,
 and rollback tests pass in a suitable isolated host.
+
+
+## Additional official low-memory quantization comparison
+
+The initial 4-profile Q4_K_M stress run [#43931807643](https://github.com/UglyGameFace/LFM3-Omni-2B/actions/runs/43931807643) finished successfully: all 52 checks passed.
+
+| Q4_K_M profile | Correct | Peak backend RSS | Backend-only headroom (2450 MB) |
+|---|---:|---:|---:|
+| Baseline 2048 | 13/13 | 2263.0 MB | 187.0 MB |
+| Compact 4096 | 13/13 | 2239.9 MB | 210.1 MB |
+| Q8 KV 4096 | 13/13 | 2203.3 MB | 246.7 MB |
+| Extended 6144 | 13/13 | 2264.4 MB | 185.6 MB |
+
+No Q4_K_M profile reached the provisional 400 MB backend-only headroom target.
+The *official* [Liquid AI GGUF tree](https://huggingface.co/LiquidAI/LFM3-Omni-2B-GGUF/tree/main)
+also includes a smaller Q4_0 base model and projector. A distinct **Omni official
+Q4_0 low-memory comparison** workflow downloads those exact two files, checks
+their upstream LFS SHA-256 and compares the same four CPU profiles. This uses
+no Discloud RAM and changes no RivaL files.
+
+Q4_0 may reduce memory, but quality and reliability must be tested rather than
+assumed equivalent to Q4_K_M. The older Q4_K_M stress workflow remains
+available manually. Neither workflow can approve production deployment.
