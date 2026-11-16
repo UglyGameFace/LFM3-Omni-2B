@@ -2,12 +2,6 @@ name: Omni CPU memory and stability matrix
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/stress_matrix.py'
-      - 'tests/test_stress_matrix.py'
-      - '.github/workflows/stability.yml'
 
 permissions:
   contents: read

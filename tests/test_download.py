@@ -36,3 +36,16 @@ class DownloadTests(TestCase):
             path = Path(folder) / "fixture"
             path.write_bytes(b"hello")
             self.assertEqual(d.sha256_file(path), hashlib.sha256(b"hello").hexdigest())
+
+    def test_official_q4_0_variant(self):
+        rows = [
+            {"path": name, "type": "file", "lfs": {
+                "oid": "b" * 64, "size": [1_050_000_000, 271_000_000][i]}}
+            for i, name in enumerate(d.VARIANTS["q4_0"])
+        ]
+        selected = d.metadata(rows, variant="q4_0")
+        self.assertEqual(set(selected), set(d.VARIANTS["q4_0"]))
+        with self.assertRaises(ValueError):
+            d.metadata(rows, variant="q4_k_m")
+        with self.assertRaises(ValueError):
+            d.metadata(rows, variant="third_party")

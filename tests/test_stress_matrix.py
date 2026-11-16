@@ -89,3 +89,8 @@ class StressMatrixTests(TestCase):
     def test_p95(self):
         self.assertIsNone(m.percentile95([]))
         self.assertEqual(m.percentile95([1, 2, 3, 4, 5]), 5)
+
+    def test_variant_catalog_does_not_allow_arbitrary_remote_weights(self):
+        self.assertEqual(set(m.download_catalog.VARIANTS), {"q4_k_m", "q4_0"})
+        self.assertEqual(m.download_catalog.VARIANTS["q4_0"][0],
+                         "LFM3-Omni-2B-Q4_0.gguf")

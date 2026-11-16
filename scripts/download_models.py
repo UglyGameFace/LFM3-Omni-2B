@@ -14,16 +14,22 @@ from urllib.request import Request, urlopen
 
 REPO = "LiquidAI/LFM3-Omni-2B-GGUF"
 REVISION = "main"
-FILES = ("LFM3-Omni-2B-Q4_K_M.gguf", "mmproj-LFM3-Omni-2B-Q4_K_M.gguf")
+VARIANTS = {
+    "q4_k_m": ("LFM3-Omni-2B-Q4_K_M.gguf", "mmproj-LFM3-Omni-2B-Q4_K_M.gguf"),
+    "q4_0": ("LFM3-Omni-2B-Q4_0.gguf", "mmproj-LFM3-Omni-2B-Q4_0.gguf"),
+}
+FILES = VARIANTS["q4_k_m"]  # Retain the stable original default
 BOUNDS = ((900_000_000, 1_500_000_000), (200_000_000, 500_000_000))
 SHA = re.compile(r"^[a-f0-9]{64}$")
 
 
-def metadata(rows: list[dict]) -> dict[str, tuple[int, str]]:
+def metadata(rows: list[dict], variant: str = "q4_k_m") -> dict[str, tuple[int, str]]:
+    if variant not in VARIANTS:
+        raise ValueError("Unsupported model variant")
     if not isinstance(rows, list):
         raise ValueError("Invalid upstream manifest")
     output = {}
-    for index, name in enumerate(FILES):
+    for index, name in enumerate(VARIANTS[variant]):
         matches = [row for row in rows if isinstance(row, dict)
                    and row.get("type") == "file" and row.get("path") == name]
         if len(matches) != 1:
@@ -39,13 +45,13 @@ def metadata(rows: list[dict]) -> dict[str, tuple[int, str]]:
     return output
 
 
-def manifest() -> dict[str, tuple[int, str]]:
+def manifest(variant: str = "q4_k_m") -> dict[str, tuple[int, str]]:
     url = f"https://huggingface.co/api/models/{REPO}/tree/{REVISION}?recursive=false"
     with urlopen(Request(url, headers={"Accept": "application/json", "User-Agent": "omni-cpu-probe/1"}), timeout=30) as src:
         raw = src.read(600_001)
     if len(raw) > 600_000:
         raise ValueError("Manifest exceeds size bound")
-    return metadata(json.loads(raw))
+    return metadata(json.loads(raw), variant=variant)
 
 
 def sha256_file(path: Path) -> str:
@@ -90,13 +96,14 @@ def download(folder: Path, name: str, size: int, digest: str) -> Path:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path, default=Path(".models"))
+    parser.add_argument("--variant", choices=sorted(VARIANTS), default="q4_k_m")
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     result = {}
-    for name, (size, digest) in manifest().items():
+    for name, (size, digest) in manifest(variant=args.variant).items():
         path = download(args.output_dir, name, size, digest)
         result[name] = {"bytes": size, "sha256": digest, "path": str(path)}
-    print(json.dumps({"repository": REPO, "files": result}, indent=2))
+    print(json.dumps({"repository": REPO, "variant": args.variant, "files": result}, indent=2))
 
 
 if __name__ == "__main__":

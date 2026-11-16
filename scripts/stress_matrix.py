@@ -23,6 +23,7 @@ from urllib.error import HTTPError, URLError
 import zlib
 
 import probe
+import download_models as download_catalog
 
 PORT = 8768
 ALLOCATION_MB = 2450
@@ -286,12 +287,16 @@ def github_summary(report: dict) -> None:
 
 
 def run(binary: Path, folder: Path, output: Path,
-        rounds: int, names: list[str], allocation_mb: int) -> dict:
+        rounds: int, names: list[str], allocation_mb: int,
+        variant: str = "q4_k_m") -> dict:
     if not 1 <= rounds <= 12:
         raise ValueError("Invalid rounds")
     if not 512 <= allocation_mb <= 65536:
         raise ValueError("Invalid configured host memory")
-    model, projector = folder / MODEL, folder / PROJECTOR
+    if variant not in download_catalog.VARIANTS:
+        raise ValueError("Unsupported official GGUF variant")
+    model_name, projector_name = download_catalog.VARIANTS[variant]
+    model, projector = folder / model_name, folder / projector_name
     for file in (binary, model, projector):
         if not file.is_file():
             raise FileNotFoundError(file)
@@ -303,7 +308,7 @@ def run(binary: Path, folder: Path, output: Path,
         "production_capacity_validated": False,
         "configured_discloud_allocation_mb": allocation_mb,
         "advisory_headroom_mb": ADVISORY_HEADROOM_MB,
-        "model": MODEL, "projector": PROJECTOR,
+        "variant": variant, "model": model_name, "projector": projector_name,
         "model_bytes": model.stat().st_size,
         "projector_bytes": projector.stat().st_size,
         "profiles": [],
@@ -330,11 +335,13 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("reports/omni-stress-matrix.json"))
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--allocation-mb", type=int, default=ALLOCATION_MB)
+    parser.add_argument("--variant", choices=sorted(download_catalog.VARIANTS),
+                        default="q4_k_m")
     parser.add_argument("--profiles", nargs="+", choices=[p.name for p in PROFILES],
                         default=[p.name for p in PROFILES])
     args = parser.parse_args()
     outcome = run(args.server, args.model_dir, args.output, args.rounds,
-                  args.profiles, args.allocation_mb)
+                  args.profiles, args.allocation_mb, args.variant)
     # If an experiment does not succeed, report that as failure. Never promote.
     baseline = next((p for p in outcome["profiles"] if p["profile"] == "baseline_2048"), None)
     if baseline is not None and not baseline["functional_and_stress_passed"]:
