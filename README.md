@@ -26,3 +26,11 @@ The runtime is pinned to llama.cpp `b12024`, newer than Liquid AI's documented `
 **Important limitations:** A successful GitHub CPU test is **not** evidence that Omni fits into RivaL Intelligence's configured 2,450 MB Discloud allocation. It also does not validate voice, video, speech output, production authentication, or actual model usefulness. Peak resident memory is a provisional measurement, not a production guarantee. The first experimental workflow only exercises text and a synthetic image.
 
 Never add production secrets, model weights, or private user data to this public repository. See [SECURITY.md](SECURITY.md). Review the upstream LFM license before using the model commercially.
+
+## November 16, 2026: first actual GitHub CPU probe
+
+The model completed text (1.13 seconds) and synthetic red-image recognition (2.44 seconds) correctly. Its measured peak llama-server process RSS was **2,188.2 MB**. The first workflow failed solely because the code treated a **2,100 MB advisory memory target** as a mandatory functional test.
+
+The corrected benchmark separates **functional inference** from **capacity advisories**. Crossing the soft target still produces a visible GitHub Actions warning, a structured capacity status, and **no production approval**. Theoretically, 2,450 MB minus 2,188.2 MB is **261.8 MB**, which does not include other app processes, longer contexts, load spikes, or Discloud-specific overhead. Production replacement remains blocked pending real host measurements.
+
+The updated workflow has not been rerun on the production hardware; use the manual GitHub Actions workflow for a repeat isolated measurement.

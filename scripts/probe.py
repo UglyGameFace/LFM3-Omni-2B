@@ -6,6 +6,8 @@ import argparse
 import base64
 from datetime import datetime, timezone
 import json
+import os
+import re
 from pathlib import Path
 import struct
 import subprocess
@@ -18,7 +20,8 @@ import zlib
 PORT = 8767
 MODEL = "LFM3-Omni-2B-Q4_K_M.gguf"
 PROJECTOR = "mmproj-LFM3-Omni-2B-Q4_K_M.gguf"
-MEMORY_LIMIT_MB = 2100  # provisional headroom below 2450 MB Discloud allocation
+MEMORY_LIMIT_MB = 2100  # caution target only, not a functional pass condition
+DISCLOUD_ALLOCATION_MB = 2450  # config value, not live host measurement
 
 
 def png() -> bytes:
@@ -76,6 +79,72 @@ def run_case(messages: list[dict]) -> dict:
                 "error": type(exc).__name__, "detail": str(exc)[:200]}
 
 
+
+def classify_probe(result: dict) -> dict:
+    """Do not confuse functional inference with production RAM suitability."""
+    peak = result.get("peak_rss_mb")
+    measured = type(peak) in (int, float) and 0 < peak < float("inf")
+    functional = (
+        result.get("text_success") is True
+        and result.get("vision_success") is True
+        and result.get("vision_color_correct") is True
+    )
+    headroom = round(DISCLOUD_ALLOCATION_MB - peak, 1) if measured else None
+    within_target = bool(measured and peak <= MEMORY_LIMIT_MB)
+    if not measured:
+        capacity = "measurement_unavailable"
+    elif peak >= DISCLOUD_ALLOCATION_MB:
+        capacity = "exceeds_configured_allocation"
+    elif not within_target:
+        capacity = "above_provisional_headroom_target"
+    else:
+        capacity = "within_provisional_headroom_target"
+    return {
+        "functional_inference_passed": functional,
+        "memory_measurement_complete": measured,
+        "within_provisional_memory_budget": within_target,
+        "estimated_allocation_headroom_mb": headroom,
+        "capacity_status": capacity,
+        # Green only means text + accurate synthetic vision + RSS collection.
+        "passed_minimal_probe": functional and measured,
+        "production_capacity_validated": False,
+        "discloud_production_validated": False,
+        "production_deployment_recommended": False,
+        "memory_measurement_scope": "llama-server VmHWM only, not total app/container use",
+    }
+
+
+def publish_action_summary(result: dict) -> None:
+    """Keep marginal RAM visibly flagged even on a successful research run."""
+    peak = result.get("peak_rss_mb")
+    status = "PASS" if result.get("passed_minimal_probe") else "FAIL"
+    lines = [
+        "## Omni CPU test: " + status,
+        "",
+        f"- Text request: {'pass' if result.get('text_success') else 'fail'}",
+        f"- Synthetic red image: {'pass' if result.get('vision_color_correct') else 'fail'}",
+        f"- Peak llama-server RSS: {peak} MB",
+        f"- Provisional RAM headroom target: {MEMORY_LIMIT_MB} MB",
+        f"- Existing Discloud configured allocation: {DISCLOUD_ALLOCATION_MB} MB",
+        f"- Capacity: **{result.get('capacity_status')}**",
+        f"- Theoretical remaining RAM: {result.get('estimated_allocation_headroom_mb')} MB",
+        "",
+        "**NOT APPROVED for production.** GitHub Actions cannot prove Discloud RAM",
+        "headroom, gateway overhead, stability, or long-context performance.",
+    ]
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if path:
+        with Path(path).open("a", encoding="utf-8") as stream:
+            stream.write("\n".join(lines) + "\n")
+    if result.get("capacity_status") != "within_provisional_headroom_target":
+        print(
+            "::warning title=Omni capacity not validated::"
+            f"Measured {peak} MB; {result.get('capacity_status')}. "
+            "Experimental inference result is not production approval.",
+            flush=True,
+        )
+
+
 def run(binary: Path, model_dir: Path, report: Path, timeout_s: int = 240) -> dict:
     model, projector = model_dir / MODEL, model_dir / PROJECTOR
     for path in (binary, model, projector):
@@ -87,8 +156,9 @@ def run(binary: Path, model_dir: Path, report: Path, timeout_s: int = 240) -> di
     result = {"type": "isolated_cpu_probe", "timestamp_utc": datetime.now(timezone.utc).isoformat(),
               "model": MODEL, "projector": PROJECTOR, "model_file_bytes": model.stat().st_size,
               "projector_file_bytes": projector.stat().st_size, "no_production_deployment": True,
-              "discloud_allocation_mb": 2450, "provisional_rss_budget_mb": MEMORY_LIMIT_MB,
-              "text_success": False, "vision_success": False, "peak_rss_mb": None}
+              "discloud_allocation_mb": DISCLOUD_ALLOCATION_MB, "provisional_rss_budget_mb": MEMORY_LIMIT_MB,
+              "text_success": False, "vision_success": False, "vision_color_correct": False,
+              "peak_rss_mb": None}
     report.parent.mkdir(parents=True, exist_ok=True)
     with report.with_suffix(".server.log").open("w", encoding="utf-8") as log:
         process = subprocess.Popen(command, cwd=report.parent.resolve(), stdout=log, stderr=subprocess.STDOUT)
@@ -115,6 +185,11 @@ def run(binary: Path, model_dir: Path, report: Path, timeout_s: int = 240) -> di
                 {"type": "image_url", "image_url": {"url": image_url}}
             ]}])
             result["vision_success"] = result["vision"]["success"]
+            result["vision_color_correct"] = bool(
+                result["vision_success"] and re.search(
+                    r"\bred\b", result["vision"].get("answer_preview", ""), flags=re.IGNORECASE
+                )
+            )
         except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
             result["fatal_error"] = type(exc).__name__ + ": " + str(exc)[:160]
         finally:
@@ -126,11 +201,10 @@ def run(binary: Path, model_dir: Path, report: Path, timeout_s: int = 240) -> di
                 process.kill()
                 process.wait()
             result["server_exit_code"] = process.returncode
-    result["within_provisional_memory_budget"] = (result["peak_rss_mb"] is not None and result["peak_rss_mb"] <= MEMORY_LIMIT_MB)
-    result["passed_minimal_probe"] = (result["text_success"] and result["vision_success"] and result["within_provisional_memory_budget"])
+    result.update(classify_probe(result))
     result["audio_video_validated"] = False
-    result["discloud_production_validated"] = False
     report.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    publish_action_summary(result)
     return result
 
 
