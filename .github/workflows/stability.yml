@@ -1,0 +1,53 @@
+name: Omni CPU memory and stability matrix
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/stress_matrix.py'
+      - 'tests/test_stress_matrix.py'
+      - '.github/workflows/stability.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: omni-memory-stability
+  cancel-in-progress: false
+
+jobs:
+  compare-memory:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate tests before model acquisition
+        run: |
+          python -m compileall -q scripts tests
+          python -m unittest discover -s tests -v
+          bash -n scripts/build_llama.sh
+      - name: Build separate pinned CPU llama.cpp
+        run: bash scripts/build_llama.sh
+      - name: SHA-256 verify exact official Omni weights and projector
+        run: python scripts/download_models.py --output-dir .models
+      - name: Run sequential memory profiles, synthetic repeat requests and long-context tests
+        run: |
+          python scripts/stress_matrix.py \
+            --server build/llama.cpp/build/bin/llama-server \
+            --model-dir .models \
+            --output reports/omni-stress-matrix.json \
+            --rounds 3
+      - name: Upload reports and synthetic test logs only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omni-memory-stability-matrix
+          path: |
+            reports/omni-stress-matrix.json
+            reports/*.server.log
+          if-no-files-found: warn
+          retention-days: 14
