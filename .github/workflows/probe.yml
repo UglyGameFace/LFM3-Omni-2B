@@ -1,0 +1,38 @@
+name: Omni isolated CPU probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: omni-isolated-cpu-probe
+  cancel-in-progress: false
+jobs:
+  measure-cpu:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Offline tests before expensive inference
+        run: python -m unittest discover -s tests -v
+      - name: Build separate pinned llama.cpp backend
+        run: bash scripts/build_llama.sh
+      - name: Download official Q4 model and projector with SHA-256 verification
+        run: python scripts/download_models.py --output-dir .models
+      - name: Isolated CPU text, vision and memory probe
+        run: |
+          python scripts/probe.py \
+            --server build/llama.cpp/build/bin/llama-server \
+            --model-dir .models --report reports/omni-probe.json
+      - name: Upload small diagnostic report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omni-isolated-report
+          path: |
+            reports/omni-probe.json
+            reports/omni-probe.server.log
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,0 +1,14 @@
+# No weights, credentials or build artifacts
+.models/
+*.gguf
+build/
+runtime/
+reports/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.env
+.env.*
+*.log
+*.part
+.DS_Store
