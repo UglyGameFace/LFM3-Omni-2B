@@ -34,3 +34,43 @@ The model completed text (1.13 seconds) and synthetic red-image recognition (2.4
 The corrected benchmark separates **functional inference** from **capacity advisories**. Crossing the soft target still produces a visible GitHub Actions warning, a structured capacity status, and **no production approval**. Theoretically, 2,450 MB minus 2,188.2 MB is **261.8 MB**, which does not include other app processes, longer contexts, load spikes, or Discloud-specific overhead. Production replacement remains blocked pending real host measurements.
 
 The updated workflow has not been rerun on the production hardware; use the manual GitHub Actions workflow for a repeat isolated measurement.
+
+
+## Extended isolation: memory and stability matrix
+
+The manual **Omni CPU memory and stability matrix** workflow tests four
+sequential CPU-only configurations using the exact same official Q4 model and
+multimodal projector:
+
+| Profile | Context | Memory technique |
+| --- | ---: | --- |
+| baseline_2048 | 2,048 | Reproduces first benchmark's baseline arguments |
+| compact_4096 | 4,096 | Smaller 128-token batch and 64-token microbatch |
+| q8_kv_4096 | 4,096 | Reduced batches plus q8_0 key/value caches |
+| extended_6144 | 6,144 | Larger context, smaller batches |
+
+Each profile launches a fresh, loopback-only llama-server process, waits for
+readiness, then runs 3 rounds of arithmetic, exact text, synthetic red-image
+and blue-image recognition, plus one fixed long-context canary-retrieval test.
+Results record correctness, request failures, median/P95 response latency,
+startup latency, and backend-process peak resident memory. The raw structured
+JSON artifact records **which** profile fails rather than silently choosing
+another model. The workflow is not scheduled. It also runs automatically
+on the first main-branch push that adds the test harness.
+
+The report uses an **advisory, not validated** 400 MB headroom target against the
+**configured** 2,450 MB Discloud allocation. Other host processes, request
+concurrency, gateway overhead, actual Discloud cgroup memory metrics, audio and
+video performance are still unverified. No result is allowed to authorize
+production replacement automatically. The RivaL service and Discloud are not
+contacted.
+
+The previous minimal text-and-image smoke test remains separate and can be
+run independently. For local isolated testing:
+
+    python -m unittest discover -s tests -v
+    python scripts/stress_matrix.py --server build/llama.cpp/build/bin/llama-server --model-dir .models --output reports/omni-stress-matrix.json
+
+The matrix reports an experimental research candidate, not a production
+recommendation. Do not deploy unless full application memory, stability,
+and rollback tests pass in a suitable isolated host.
