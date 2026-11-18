@@ -1,0 +1,29 @@
+# Discloud config EXAMPLE — NOT deployed, NOT a live config.
+# Copy to discloud.config and fill in values ONLY when a separate host
+# (not the 2,450 MB RivaL allocation) has been approved. Omni cannot fit
+# the existing 2,450 MB allocation on either quant:
+#   Q4_K_M best peak 2203.3 MB / headroom 246.7 MB (run 43931807643)
+#   Q4_0   best peak 2238.4 MB / headroom 211.6 MB (run 43934082561)
+# Neither meets the 400 MB advisory headroom target. LFM3-1.7B stays live.
+NAME=omni-unified-example
+MAIN=service/__main__.py
+# RAM is illustrative only. The measured minimum total budget the service
+# will accept is 2303 MB (2203.3 MB lowest measured backend peak + 100 MB
+# estimated service overhead). Do NOT set this below 2303. A separate host
+# should allow at least 2450 MB + real headroom for the gateway and growth.
+RAM=3072
+AUTORESTART=true
+# Environment (set in the Discloud panel, never committed):
+#   OMNI_AUTH_TOKEN=<set in panel, never in git>
+#   OMNI_MEMORY_BUDGET_MB=3072
+#   OMNI_VARIANT=q4_k_m
+#   OMNI_BACKEND_COMMAND=<path to llama-server binary on the host>
+#   OMNI_MODEL_PATH=<path to LFM3-Omni-2B-Q4_K_M.gguf>
+#   OMNI_MMPROJ_PATH=<path to mmproj-LFM3-Omni-2B-Q4_K_M.gguf>
+#   OMNI_BACKEND_URL=http://127.0.0.1:8767
+#   OMNI_MAX_CONTEXT_TOKENS=4096
+#   OMNI_MAX_CONCURRENT=4
+#   OMNI_RATE_LIMIT_PER_MIN=60
+#   OMNI_REASONING_BACKEND=none
+# Model cache: models are downloaded by scripts/download_models.py with
+# SHA-256 verification and are NEVER committed to git (see .gitignore).
